@@ -11,6 +11,7 @@ from src.transform.transform_data import (
     build_dim_producto,
     build_dim_empleado,
     build_dim_proveedor,
+    build_fact_ventas,
 )
 from src.load.load_postgres import load_to_postgres
 
@@ -23,19 +24,28 @@ def main():
     producto_base = extract_productos()
     proveedor_base = extract_proveedores()
 
-    # TRANSFORMACIÓN – Dimensiones
+    # TRANSFORMACIÓN
     dim_tiempo = build_dim_tiempo(facturas_base)
     dim_cliente = build_dim_cliente(cliente_base)
     dim_empleado = build_dim_empleado(empleado_base)
     dim_producto = build_dim_producto(producto_base)
     dim_proveedor = build_dim_proveedor(proveedor_base)
+    fact_ventas = build_fact_ventas(
+        facturas_base,
+        dim_tiempo,
+        dim_cliente,
+        dim_producto,
+        dim_empleado,
+        dim_proveedor,
+    )
 
-    # CARGA – Dimensiones
+    # CARGA
     load_to_postgres(dim_tiempo, "dim_tiempo")
     load_to_postgres(dim_cliente, "dim_cliente")
     load_to_postgres(dim_producto, "dim_producto")
     load_to_postgres(dim_empleado, "dim_empleado")
     load_to_postgres(dim_proveedor, "dim_proveedor")
+    load_to_postgres(fact_ventas, "fact_ventas")
 
     print("ETL completado.")
 

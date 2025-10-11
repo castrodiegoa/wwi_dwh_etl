@@ -144,7 +144,9 @@ def build_dim_producto(producto_base: pd.DataFrame) -> pd.DataFrame:
 
     # Convertir el bit a texto
     dim_producto["es_refrigerado"] = (
-        dim_producto["es_refrigerado"].map({True: "Sí", False: "No"}).fillna("Desconocido")
+        dim_producto["es_refrigerado"]
+        .map({True: "Sí", False: "No"})
+        .fillna("Desconocido")
     )
 
     # Orden final de columnas
@@ -156,6 +158,7 @@ def build_dim_producto(producto_base: pd.DataFrame) -> pd.DataFrame:
             "marca",
             "es_refrigerado",
             "tipo_paquete",
+            "proveedor_id",
         ]
     ]
 
@@ -194,3 +197,99 @@ def build_dim_proveedor(proveedores_base: pd.DataFrame) -> pd.DataFrame:
     ]
 
     return dim_proveedor
+
+
+def build_fact_ventas(
+    facturas_base: pd.DataFrame,
+    dim_tiempo: pd.DataFrame,
+    dim_cliente: pd.DataFrame,
+    dim_producto: pd.DataFrame,
+    dim_empleado: pd.DataFrame,
+    dim_proveedor: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Crea la tabla de hechos de ventas AGREGADA a partir de la tabla base
+    de facturas y líneas de factura, y las dimensiones.
+
+    Granularidad: día + producto + cliente + empleado + proveedor
+    Cada registro representa la suma de todas las ventas de esa combinación en un día.
+    Las métricas son a nivel de producto vendido.
+    """
+
+    fact_ventas = facturas_base.copy()
+
+    # Convertir fecha a datetime y extraer solo la fecha (sin hora)
+    fact_ventas["fecha_operacion"] = pd.to_datetime(
+        fact_ventas["fecha_operacion"]
+    ).dt.date
+
+    # MERGE con dim_producto para obtener proveedor_id
+    fact_ventas = fact_ventas.merge(
+        dim_producto[["producto_id", "proveedor_id"]],
+        on="producto_id",
+        how="left",
+    )
+
+    # MERGE con dim_tiempo para obtener tiempo_id
+    # Convertir dim_tiempo.fecha_completa al mismo tipo (date)
+    dim_tiempo["fecha_completa"] = pd.to_datetime(dim_tiempo["fecha_completa"]).dt.date
+    fact_ventas = fact_ventas.merge(
+        dim_tiempo[["tiempo_id", "fecha_completa"]],
+        left_on="fecha_operacion",
+        right_on="fecha_completa",
+        how="left",
+    )
+
+    # AGREGACIÓN
+    # Agrupar por: día (tiempo_id) + producto + cliente + empleado + proveedor
+    fact_ventas = (
+        fact_ventas.groupby(
+            ["tiempo_id", "producto_id", "cliente_id", "empleado_id", "proveedor_id"],
+            dropna=False,  # Mantener registros aunque haya algún NULL
+        )
+        .agg(
+            {
+                # Métricas agregadas (sumatorias)
+                "cantidad": "sum",  # → cantidad_total_vendida
+                "precio_unitario": "sum",  # monto_ventas_neto
+                "monto_impuesto": "sum",  # → monto_impuestos
+                "precio_extendido": "sum",  # → monto_ventas_bruto (con impuestos)
+                "ganancia_linea": "sum",  # → ganancia_total
+            }
+        )
+        .reset_index()
+    )
+
+    # Renombrar columnas a nombres semánticos
+    fact_ventas = fact_ventas.rename(
+        columns={
+            "cantidad": "cantidad_total_vendida",
+            "precio_unitario": "monto_ventas_neto",
+            "monto_impuesto": "monto_impuestos",
+            "precio_extendido": "monto_ventas_bruto",
+            "ganancia_linea": "ganancia_total",
+        }
+    )
+
+    # Crear ID único para cada registro de hecho (opcional pero recomendado)
+    fact_ventas.insert(0, "venta_id", range(1, len(fact_ventas) + 1))
+
+    # Orden final de columnas
+    fact_ventas = fact_ventas[
+        [
+            "venta_id",  # PK surrogate (opcional)
+            "tiempo_id",  # FK → dim_tiempo
+            "producto_id",  # FK → dim_producto
+            "cliente_id",  # FK → dim_cliente
+            "empleado_id",  # FK → dim_empleado
+            "proveedor_id",  # FK → dim_proveedor
+            # --- MÉTRICAS AGREGADAS ---
+            "cantidad_total_vendida",  # SUM(cantidad)
+            "monto_ventas_neto",  # SUM(monto_linea) - sin impuestos
+            "monto_impuestos",  # SUM(monto_impuesto)
+            "monto_ventas_bruto",  # SUM(precio_extendido) - con impuestos
+            "ganancia_total",  # SUM(ganancia_linea)
+        ]
+    ]
+
+    return fact_ventas

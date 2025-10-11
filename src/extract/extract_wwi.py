@@ -88,7 +88,8 @@ def extract_productos() -> pd.DataFrame:
         S.Size              AS tamaño,
         S.Brand             AS marca,
         S.IsChillerStock    AS es_refrigerado,
-        PT.PackageTypeName  AS tipo_paquete
+        PT.PackageTypeName  AS tipo_paquete,
+        S.SupplierID        AS proveedor_id
     FROM Warehouse.StockItems S
     JOIN Warehouse.PackageTypes PT
       ON S.UnitPackageID = PT.PackageTypeID
