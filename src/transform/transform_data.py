@@ -39,7 +39,7 @@ def build_dim_tiempo(facturas_base: pd.DataFrame) -> pd.DataFrame:
 
     # Ordenar las fechas cronológicamente y reiniciar el índice
     dim_tiempo = dim_tiempo.sort_values("fecha_completa").reset_index(drop=True)
-    # Generar surrogate key
+    # Generar llave subrogada
     dim_tiempo["tiempo_id"] = dim_tiempo.index + 1
 
     # Orden final de columnas
@@ -211,28 +211,21 @@ def build_fact_ventas(
     Crea la tabla de hechos de ventas AGREGADA a partir de la tabla base
     de facturas y líneas de factura, y las dimensiones.
 
-    Granularidad: día + producto + cliente + empleado + proveedor
-    Cada registro representa la suma de todas las ventas de esa combinación en un día.
-    Las métricas son a nivel de producto vendido.
+    Las métricas son a nivel de producto vendido con la combinación:
+    día + producto + cliente + empleado + proveedor.
     """
 
     fact_ventas = facturas_base.copy()
+    fact_ventas["fecha_operacion"] = pd.to_datetime(fact_ventas["fecha_operacion"])
 
-    # Convertir fecha a datetime y extraer solo la fecha (sin hora)
-    fact_ventas["fecha_operacion"] = pd.to_datetime(
-        fact_ventas["fecha_operacion"]
-    ).dt.date
-
-    # MERGE con dim_producto para obtener proveedor_id
+    # MERGE de hechos con dim_producto para obtener proveedor_id
     fact_ventas = fact_ventas.merge(
         dim_producto[["producto_id", "proveedor_id"]],
         on="producto_id",
         how="left",
     )
 
-    # MERGE con dim_tiempo para obtener tiempo_id
-    # Convertir dim_tiempo.fecha_completa al mismo tipo (date)
-    dim_tiempo["fecha_completa"] = pd.to_datetime(dim_tiempo["fecha_completa"]).dt.date
+    # MERGE de hechos con dim_tiempo para obtener tiempo_id
     fact_ventas = fact_ventas.merge(
         dim_tiempo[["tiempo_id", "fecha_completa"]],
         left_on="fecha_operacion",
@@ -240,8 +233,24 @@ def build_fact_ventas(
         how="left",
     )
 
+    # VALIDAR INTEGRIDAD REFERENCIAL
+    # Filtrar solo clientes que existen en dim_cliente
+    clientes_validos = set(dim_cliente["cliente_id"].values)
+    fact_ventas = fact_ventas[fact_ventas["cliente_id"].isin(clientes_validos)]
+    # Filtrar solo productos que existen en dim_producto
+    productos_validos = set(dim_producto["producto_id"].values)
+    fact_ventas = fact_ventas[fact_ventas["producto_id"].isin(productos_validos)]
+    # Filtrar solo empleados que existen en dim_empleado
+    empleados_validos = set(dim_empleado["empleado_id"].values)
+    fact_ventas = fact_ventas[fact_ventas["empleado_id"].isin(empleados_validos)]
+    # Filtrar solo proveedores que existen en dim_proveedor
+    proveedores_validos = set(dim_proveedor["proveedor_id"].values)
+    fact_ventas = fact_ventas[fact_ventas["proveedor_id"].isin(proveedores_validos)]
+    # Filtrar solo fechas que existen en dim_tiempo
+    tiempos_validos = set(dim_tiempo["tiempo_id"].values)
+    fact_ventas = fact_ventas[fact_ventas["tiempo_id"].isin(tiempos_validos)]
+
     # AGREGACIÓN
-    # Agrupar por: día (tiempo_id) + producto + cliente + empleado + proveedor
     fact_ventas = (
         fact_ventas.groupby(
             ["tiempo_id", "producto_id", "cliente_id", "empleado_id", "proveedor_id"],
@@ -250,17 +259,17 @@ def build_fact_ventas(
         .agg(
             {
                 # Métricas agregadas (sumatorias)
-                "cantidad": "sum",  # → cantidad_total_vendida
-                "precio_unitario": "sum",  # monto_ventas_neto
-                "monto_impuesto": "sum",  # → monto_impuestos
-                "precio_extendido": "sum",  # → monto_ventas_bruto (con impuestos)
-                "ganancia_linea": "sum",  # → ganancia_total
+                "cantidad": "sum",  # -> cantidad_total_vendida
+                "precio_unitario": "sum",  # -> monto_ventas_neto (sin impuestos)
+                "monto_impuesto": "sum",  # -> monto_impuestos
+                "precio_extendido": "sum",  # -> monto_ventas_bruto (con impuestos)
+                "ganancia_linea": "sum",  # -> ganancia_total
             }
         )
         .reset_index()
     )
 
-    # Renombrar columnas a nombres semánticos
+    # Renombrar columnas
     fact_ventas = fact_ventas.rename(
         columns={
             "cantidad": "cantidad_total_vendida",
@@ -271,21 +280,22 @@ def build_fact_ventas(
         }
     )
 
-    # Crear ID único para cada registro de hecho (opcional pero recomendado)
+    # Generar llave subrogada
     fact_ventas.insert(0, "venta_id", range(1, len(fact_ventas) + 1))
 
     # Orden final de columnas
     fact_ventas = fact_ventas[
         [
-            "venta_id",  # PK surrogate (opcional)
-            "tiempo_id",  # FK → dim_tiempo
-            "producto_id",  # FK → dim_producto
-            "cliente_id",  # FK → dim_cliente
-            "empleado_id",  # FK → dim_empleado
-            "proveedor_id",  # FK → dim_proveedor
-            # --- MÉTRICAS AGREGADAS ---
+            # FORÁNEAS
+            "venta_id",
+            "tiempo_id",
+            "producto_id",
+            "cliente_id",
+            "empleado_id",
+            "proveedor_id",
+            # MÉTRICAS
             "cantidad_total_vendida",  # SUM(cantidad)
-            "monto_ventas_neto",  # SUM(monto_linea) - sin impuestos
+            "monto_ventas_neto",  # SUM(precio_unitario) - sin impuestos
             "monto_impuestos",  # SUM(monto_impuesto)
             "monto_ventas_bruto",  # SUM(precio_extendido) - con impuestos
             "ganancia_total",  # SUM(ganancia_linea)
