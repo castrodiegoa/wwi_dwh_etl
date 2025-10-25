@@ -260,9 +260,9 @@ def build_fact_ventas(
             {
                 # Métricas agregadas (sumatorias)
                 "cantidad": "sum",  # -> cantidad_total_vendida
-                "precio_unitario": "sum",  # -> monto_ventas_neto (sin impuestos)
+                "precio_unitario": "sum",  # -> monto_ventas_bruto (sin impuestos)
                 "monto_impuesto": "sum",  # -> monto_impuestos
-                "precio_extendido": "sum",  # -> monto_ventas_bruto (con impuestos)
+                "precio_extendido": "sum",  # -> monto_ventas_neto (con impuestos)
                 "ganancia_linea": "sum",  # -> ganancia_total
             }
         )
@@ -273,9 +273,9 @@ def build_fact_ventas(
     fact_ventas = fact_ventas.rename(
         columns={
             "cantidad": "cantidad_total_vendida",
-            "precio_unitario": "monto_ventas_neto",
+            "precio_unitario": "monto_ventas_bruto",
             "monto_impuesto": "monto_impuestos",
-            "precio_extendido": "monto_ventas_bruto",
+            "precio_extendido": "monto_ventas_neto",
             "ganancia_linea": "ganancia_total",
         }
     )
@@ -295,9 +295,9 @@ def build_fact_ventas(
             "proveedor_id",
             # MÉTRICAS
             "cantidad_total_vendida",  # SUM(cantidad)
-            "monto_ventas_neto",  # SUM(precio_unitario) - sin impuestos
+            "monto_ventas_bruto",  # SUM(precio_unitario) - sin impuestos
             "monto_impuestos",  # SUM(monto_impuesto)
-            "monto_ventas_bruto",  # SUM(precio_extendido) - con impuestos
+            "monto_ventas_neto",  # SUM(precio_extendido) - con impuestos
             "ganancia_total",  # SUM(ganancia_linea)
         ]
     ]
