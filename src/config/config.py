@@ -10,7 +10,7 @@ SQLSERVER_CONFIG = {
     "password": os.getenv("SQLSERVER_PASSWORD"),
     "host": os.getenv("SQLSERVER_HOST"),
     "port": os.getenv("SQLSERVER_PORT"),
-    "database": os.getenv("SQLSERVER_DB"),
+    "database": os.getenv("SQLSERVER_DB_NAME"),
 }
 
 # Configuración PostgreSQL
@@ -19,5 +19,5 @@ POSTGRES_CONFIG = {
     "password": os.getenv("POSTGRES_PASSWORD"),
     "host": os.getenv("POSTGRES_HOST"),
     "port": os.getenv("POSTGRES_PORT"),
-    "database": os.getenv("POSTGRES_DB"),
+    "database": os.getenv("POSTGRES_DB_NAME"),
 }
